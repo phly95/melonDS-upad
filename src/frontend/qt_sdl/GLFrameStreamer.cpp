@@ -92,7 +92,6 @@ void GLFrameStreamer::InitGstPipeline(const std::string& target_ip, uint16_t tar
 
     std::string enc_desc = GetEncoderDesc(encoder, gpu_device, bitrate);
 
-    // Only add vaapiupload if we know a VAAPI encoder is being used
     bool needsVAAPIUpload = IsVAAPIEncoder(encoder) ||
                             enc_desc.find("vaapi") != std::string::npos ||
                             enc_desc.find("vah264") != std::string::npos;
@@ -100,7 +99,7 @@ void GLFrameStreamer::InitGstPipeline(const std::string& target_ip, uint16_t tar
     std::string pipeline_desc = "appsrc name=src is-live=true format=3 "
                                 "! videoconvert";
     if (needsVAAPIUpload)
-        pipeline_desc += " ! vaapiupload";
+        pipeline_desc += " ! video/x-raw,format=NV12";
     pipeline_desc += " ! " + enc_desc +
                      " ! h264parse "
                      "! rtph264pay config-interval=1 pt=96 "
