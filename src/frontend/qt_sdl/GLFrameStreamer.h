@@ -93,6 +93,7 @@ private:
 
     static constexpr int NUM_PBO_BUFFERS = 2;
     GLuint pbo[NUM_PBO_BUFFERS] = {};
+    GLsync pboFence[NUM_PBO_BUFFERS] = {};
     int currentPBO = 0;
     bool pboPrimed = false;
 

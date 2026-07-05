@@ -201,6 +201,10 @@ void GLFrameStreamer::Stop()
 {
     if (!active) return;
     CleanupGstPipeline();
+    for (int i = 0; i < NUM_PBO_BUFFERS; i++)
+    {
+        if (pboFence[i]) { glDeleteSync(pboFence[i]); pboFence[i] = nullptr; }
+    }
     if (fbo) { glDeleteFramebuffers(1, &fbo); fbo = 0; }
     if (tex) { glDeleteTextures(1, &tex); tex = 0; }
     if (pbo[0] || pbo[1]) { glDeleteBuffers(NUM_PBO_BUFFERS, pbo); pbo[0] = pbo[1] = 0; }
@@ -280,6 +284,10 @@ bool GLFrameStreamer::PushFrame(void* top_buffer, void* bottom_buffer, bool use_
         glReadPixels(0, 0, srcWidth, srcHeight, GL_RGBA, GL_UNSIGNED_BYTE, 0);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
+        // Insert fence to track when this PBO readback completes
+        if (pboFence[currentPBO]) glDeleteSync(pboFence[currentPBO]);
+        pboFence[currentPBO] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+
         glDeleteFramebuffers(1, &srcFbo);
     }
     else
@@ -316,12 +324,25 @@ bool GLFrameStreamer::PushFrame(void* top_buffer, void* bottom_buffer, bool use_
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo[currentPBO]);
         glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, 0);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+        // Insert fence to track when this PBO readback completes
+        if (pboFence[currentPBO]) glDeleteSync(pboFence[currentPBO]);
+        pboFence[currentPBO] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     }
 
     // Map previous frame's PBO and push to GStreamer
     if (pboPrimed)
     {
         int readPBO = (currentPBO + 1) % NUM_PBO_BUFFERS;
+
+        // Wait for this PBO's readback to complete on the GPU
+        if (pboFence[readPBO])
+        {
+            glClientWaitSync(pboFence[readPBO], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+            glDeleteSync(pboFence[readPBO]);
+            pboFence[readPBO] = nullptr;
+        }
+
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo[readPBO]);
         GLubyte* pixels = (GLubyte*)glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0,
                             width * height * 4, GL_MAP_READ_BIT);
