@@ -159,6 +159,10 @@ private slots:
     void onOpenInterfaceSettings();
     void onInterfaceSettingsFinished(int res);
     void onUpdateInterfaceSettings();
+#ifdef HAVE_GSTREAMER
+    void onOpenStreamingSettings();
+    void onStreamingSettingsFinished(int res);
+#endif
     void onChangeScreenSize();
     void onChangeScreenRotation(QAction* act);
     void onChangeScreenGap(QAction* act);
@@ -274,6 +278,9 @@ public:
     QAction* actFirmwareSettings;
     QAction* actPathSettings;
     QAction* actInterfaceSettings;
+#ifdef HAVE_GSTREAMER
+    QAction* actStreamingSettings;
+#endif
     QAction* actScreenSize[4];
     QActionGroup* grpScreenRotation;
     QAction* actScreenRotation[screenRot_MAX];

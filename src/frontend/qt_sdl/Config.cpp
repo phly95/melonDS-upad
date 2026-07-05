@@ -72,6 +72,13 @@ DefaultList<int> DefaultInts =
     {"Instance*.Gdb.ARM9.Port", 3333},
 #endif
     {"LAN.HostNumPlayers", 16},
+#ifdef HAVE_GSTREAMER
+    {"Streaming.Screen", 0},
+    {"Streaming.Encoder", 0},
+    {"Streaming.Width", 256},
+    {"Streaming.Height", 192},
+    {"Streaming.TargetPort", 5000},
+#endif
 };
 
 RangeList IntRanges =
@@ -112,13 +119,21 @@ DefaultList<bool> DefaultBools =
 #endif
     {"DSi.DSP.HLE", true},
     {"Instance*.RTC.SyncToHost", true},
+#ifdef HAVE_GSTREAMER
+    {"Streaming.Enabled", false},
+    {"Streaming.CustomResolution", false},
+#endif
 };
 
 DefaultList<std::string> DefaultStrings =
 {
     {"DLDI.ImagePath",                  "dldi.bin"},
     {"DSi.SD.ImagePath",                "dsisd.bin"},
-    {"Instance*.Firmware.Username",     "melonDS"}
+    {"Instance*.Firmware.Username",     "melonDS"},
+#ifdef HAVE_GSTREAMER
+    {"Streaming.GPUDevice",             ""},
+    {"Streaming.TargetIP",              "192.168.1.100"},
+#endif
 };
 
 DefaultList<double> DefaultDoubles =

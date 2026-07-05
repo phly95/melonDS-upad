@@ -55,6 +55,9 @@
 #include "MPSettingsDialog.h"
 #include "WifiSettingsDialog.h"
 #include "InterfaceSettingsDialog.h"
+#ifdef HAVE_GSTREAMER
+#include "StreamingSettingsDialog.h"
+#endif
 #include "ROMInfoDialog.h"
 #include "RAMInfoDialog.h"
 #include "TitleManagerDialog.h"
@@ -611,6 +614,11 @@ MainWindow::MainWindow(int id, EmuInstance* inst, QWidget* parent) :
             actInterfaceSettings = menu->addAction("Interface settings");
             connect(actInterfaceSettings, &QAction::triggered, this, &MainWindow::onOpenInterfaceSettings);
 
+#ifdef HAVE_GSTREAMER
+            actStreamingSettings = menu->addAction("Streaming settings");
+            connect(actStreamingSettings, &QAction::triggered, this, &MainWindow::onOpenStreamingSettings);
+#endif
+
             actPathSettings = menu->addAction("Path settings");
             connect(actPathSettings, &QAction::triggered, this, &MainWindow::onOpenPathSettings);
 
@@ -740,6 +748,9 @@ MainWindow::MainWindow(int id, EmuInstance* inst, QWidget* parent) :
             actMPSettings->setEnabled(false);
             actWifiSettings->setEnabled(false);
             actInterfaceSettings->setEnabled(false);
+#ifdef HAVE_GSTREAMER
+            actStreamingSettings->setEnabled(false);
+#endif
 
 #ifdef __APPLE__
             actPreferences->setEnabled(false);
@@ -2003,6 +2014,29 @@ void MainWindow::onInterfaceSettingsFinished(int res)
 {
     emuThread->emuUnpause();
 }
+
+#ifdef HAVE_GSTREAMER
+void MainWindow::onOpenStreamingSettings()
+{
+    emuThread->emuPause();
+    StreamingSettingsDialog* dlg = StreamingSettingsDialog::openDlg(this);
+    connect(dlg, &StreamingSettingsDialog::finished, this, &MainWindow::onStreamingSettingsFinished);
+    connect(dlg, &StreamingSettingsDialog::updateStreamingSettings, this, [this]()
+    {
+        if (panel)
+        {
+            auto* glPanel = qobject_cast<ScreenPanelGL*>(panel);
+            if (glPanel)
+                glPanel->updateStreamer();
+        }
+    });
+}
+
+void MainWindow::onStreamingSettingsFinished(int res)
+{
+    emuThread->emuUnpause();
+}
+#endif
 
 void MainWindow::onChangeScreenSize()
 {

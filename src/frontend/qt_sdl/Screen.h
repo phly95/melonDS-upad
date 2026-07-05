@@ -34,6 +34,10 @@
 #include "ScreenLayout.h"
 #include "duckstation/gl/context.h"
 
+#ifdef HAVE_GSTREAMER
+class GLFrameStreamer;
+#endif
+
 
 class MainWindow;
 class EmuInstance;
@@ -241,6 +245,16 @@ private:
 
     void osdRenderItem(OSDItem* item) override;
     void osdDeleteItem(OSDItem* item) override;
+
+#ifdef HAVE_GSTREAMER
+    std::unique_ptr<GLFrameStreamer> streamer;
+    bool streamingEnabled;
+    bool pendingStreamerStart;
+    void initStreamer();
+
+public:
+    void updateStreamer();
+#endif
 };
 
 #endif // SCREEN_H

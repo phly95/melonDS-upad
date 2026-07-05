@@ -44,6 +44,10 @@
 #include "font.h"
 #include "version.h"
 
+#ifdef HAVE_GSTREAMER
+#include "GLFrameStreamer.h"
+#endif
+
 using namespace melonDS;
 
 #if !defined(_WIN32) && !defined(APPLE)
@@ -876,6 +880,11 @@ ScreenPanelGL::ScreenPanelGL(QWidget* parent) : ScreenPanel(parent)
     setMinimumSize(screenGetMinSize());
 
     glInited = false;
+
+#ifdef HAVE_GSTREAMER
+    streamingEnabled = false;
+    pendingStreamerStart = false;
+#endif
 }
 
 ScreenPanelGL::~ScreenPanelGL()
@@ -1022,6 +1031,10 @@ void ScreenPanelGL::initOpenGL()
 
     transferLayout();
     glInited = true;
+
+#ifdef HAVE_GSTREAMER
+    initStreamer();
+#endif
 }
 
 void ScreenPanelGL::deinitOpenGL()
@@ -1052,6 +1065,13 @@ void ScreenPanelGL::deinitOpenGL()
 
     glDeleteProgram(osdShader);
 
+#ifdef HAVE_GSTREAMER
+    if (streamer)
+    {
+        streamer->Stop();
+        streamer.reset();
+    }
+#endif
 
     glContext->DoneCurrent();
 
@@ -1132,7 +1152,8 @@ void ScreenPanelGL::drawScreen()
         glUniform2f(screenShaderScreenSizeULoc, w / factor, h / factor);
 
         void* topbuf; void* bottombuf;
-        if (nds->GPU.GetFramebuffers(&topbuf, &bottombuf))
+        bool isSoftwareRenderer = nds->GPU.GetFramebuffers(&topbuf, &bottombuf);
+        if (isSoftwareRenderer)
         {
             // if we're doing a regular render, use the provided framebuffers
             // otherwise, GetFramebuffers() will set up the required state
@@ -1169,6 +1190,18 @@ void ScreenPanelGL::drawScreen()
         }
 
         screenSettingsLock.unlock();
+
+#ifdef HAVE_GSTREAMER
+        if (pendingStreamerStart && !streamer)
+        {
+            pendingStreamerStart = false;
+            initStreamer();
+        }
+        if (streamingEnabled && streamer && streamer->IsActive())
+        {
+            streamer->PushFrame(topbuf, bottombuf, !isSoftwareRenderer);
+        }
+#endif
     }
 
     osdUpdate();
@@ -1378,3 +1411,45 @@ void ScreenPanelGL::transferLayout()
         screenSettingsLock.unlock();
     }
 }
+
+#ifdef HAVE_GSTREAMER
+void ScreenPanelGL::initStreamer()
+{
+    auto& cfg = emuInstance->getGlobalConfig();
+    if (!cfg.GetBool("Streaming.Enabled")) return;
+
+    streamer = std::make_unique<GLFrameStreamer>();
+    if (!streamer->IsSupported())
+    {
+        melonDS::Platform::Log(melonDS::Platform::Error, "GLFrameStreamer: GStreamer not supported");
+        streamer.reset();
+        streamingEnabled = false;
+        return;
+    }
+
+    std::string ip = cfg.GetString("Streaming.TargetIP");
+    uint16_t port = static_cast<uint16_t>(cfg.GetInt("Streaming.TargetPort"));
+    StreamingEncoder encoder = static_cast<StreamingEncoder>(cfg.GetInt("Streaming.Encoder"));
+    std::string gpu = cfg.GetString("Streaming.GPUDevice");
+    bool customRes = cfg.GetBool("Streaming.CustomResolution");
+    uint32_t w = static_cast<uint32_t>(cfg.GetInt("Streaming.Width"));
+    uint32_t h = static_cast<uint32_t>(cfg.GetInt("Streaming.Height"));
+    StreamingScreen scr = static_cast<StreamingScreen>(cfg.GetInt("Streaming.Screen"));
+
+    streamer->Start(ip, port, encoder, gpu, customRes, w, h, scr);
+    streamingEnabled = streamer->IsActive();
+}
+
+void ScreenPanelGL::updateStreamer()
+{
+    if (streamer)
+    {
+        streamer->Stop();
+        streamer.reset();
+        streamingEnabled = false;
+    }
+
+    auto& cfg = emuInstance->getGlobalConfig();
+    pendingStreamerStart = cfg.GetBool("Streaming.Enabled");
+}
+#endif

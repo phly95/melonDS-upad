@@ -88,9 +88,27 @@ pkg_check_modules(LibArchive REQUIRED IMPORTED_TARGET libarchive)
 pkg_check_modules(Zstd REQUIRED IMPORTED_TARGET libzstd)
 pkg_check_modules(Faad REQUIRED IMPORTED_TARGET faad2)
 
+find_package(PkgConfig QUIET)
+pkg_check_modules(GStreamer QUIET IMPORTED_TARGET gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0)
+if (GStreamer_FOUND)
+    set(HAVE_GSTREAMER TRUE)
+    add_compile_definitions(HAVE_GSTREAMER)
+    message(STATUS "GStreamer found - streaming support enabled")
+else()
+    set(HAVE_GSTREAMER FALSE)
+    message(STATUS "GStreamer not found - streaming support disabled")
+endif()
+
 fix_interface_includes(PkgConfig::SDL2 PkgConfig::LibArchive)
 
 add_compile_definitions(ARCHIVE_SUPPORT_ENABLED)
+
+if (HAVE_GSTREAMER)
+    list(APPEND SOURCES_QT_SDL
+        GLFrameStreamer.cpp
+        StreamingSettingsDialog.cpp
+    )
+endif()
 
 add_executable(melonDS ${SOURCES_QT_SDL})
 
@@ -193,6 +211,11 @@ endif()
 target_link_libraries(melonDS PRIVATE core)
 target_link_libraries(melonDS PRIVATE PkgConfig::SDL2 PkgConfig::LibArchive PkgConfig::Zstd PkgConfig::Faad)
 target_link_libraries(melonDS PRIVATE ${QT_LINK_LIBS} ${CMAKE_DL_LIBS})
+
+if (HAVE_GSTREAMER)
+    target_link_libraries(melonDS PRIVATE PkgConfig::GStreamer)
+    target_compile_definitions(melonDS PRIVATE HAVE_GSTREAMER)
+endif()
 
 if (WIN32)
     option(PORTABLE "Make a portable build that looks for its configuration in the current directory" ON)
