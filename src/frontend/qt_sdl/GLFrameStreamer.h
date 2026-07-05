@@ -76,6 +76,7 @@ private:
     void CleanupGstPipeline();
     std::string GetEncoderDesc(StreamingEncoder encoder, const std::string& gpu_device,
                                uint32_t bitrate);
+    bool IsVAAPIEncoder(StreamingEncoder encoder);
 
     bool active = false;
     bool customResolution = false;

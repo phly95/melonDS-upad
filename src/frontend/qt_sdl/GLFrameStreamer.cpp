@@ -74,6 +74,11 @@ std::string GLFrameStreamer::GetEncoderDesc(StreamingEncoder encoder, const std:
     }
 }
 
+bool GLFrameStreamer::IsVAAPIEncoder(StreamingEncoder encoder)
+{
+    return encoder == StreamingEncoder::VAAPI || encoder == StreamingEncoder::VAAPI_LowPower;
+}
+
 void GLFrameStreamer::InitGstPipeline(const std::string& target_ip, uint16_t target_port,
                                        StreamingEncoder encoder, const std::string& gpu_device,
                                        uint32_t bitrate)
@@ -87,12 +92,20 @@ void GLFrameStreamer::InitGstPipeline(const std::string& target_ip, uint16_t tar
 
     std::string enc_desc = GetEncoderDesc(encoder, gpu_device, bitrate);
 
+    // Only add vaapiupload if we know a VAAPI encoder is being used
+    bool needsVAAPIUpload = IsVAAPIEncoder(encoder) ||
+                            enc_desc.find("vaapi") != std::string::npos ||
+                            enc_desc.find("vah264") != std::string::npos;
+
     std::string pipeline_desc = "appsrc name=src is-live=true format=3 "
-                                "! videoconvert ! " + enc_desc +
-                                " ! h264parse "
-                                "! rtph264pay config-interval=1 pt=96 "
-                                "! udpsink host=" + target_ip +
-                                " port=" + std::to_string(target_port);
+                                "! videoconvert";
+    if (needsVAAPIUpload)
+        pipeline_desc += " ! vaapiupload";
+    pipeline_desc += " ! " + enc_desc +
+                     " ! h264parse "
+                     "! rtph264pay config-interval=1 pt=96 "
+                     "! udpsink host=" + target_ip +
+                     " port=" + std::to_string(target_port);
 
     melonDS::Platform::Log(melonDS::Platform::Info, "GLFrameStreamer: Pipeline: %s", pipeline_desc.c_str());
 
