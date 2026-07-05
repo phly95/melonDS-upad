@@ -76,6 +76,12 @@ VideoSettingsDialog::VideoSettingsDialog(QWidget* parent) : QDialog(parent), ui(
 #else
     connect(grp3DRenderer, SIGNAL(idClicked(int)), this, SLOT(onChange3DRenderer(int)));
 #endif
+    // Force OpenGL if Software was selected (Software renderer is disabled)
+    if (oldRenderer == renderer3D_Software)
+    {
+        oldRenderer = renderer3D_OpenGL;
+        cfg.SetInt("3D.Renderer", renderer3D_OpenGL);
+    }
     grp3DRenderer->button(oldRenderer)->setChecked(true);
 
 #ifndef OGLRENDERER_ENABLED
@@ -85,6 +91,10 @@ VideoSettingsDialog::VideoSettingsDialog(QWidget* parent) : QDialog(parent), ui(
 #ifdef __APPLE__
     ui->rb3DCompute->setEnabled(false);
 #endif
+
+    // Software renderer is disabled in this build
+    ui->rb3DSoftware->setEnabled(false);
+    ui->groupBox_2->setEnabled(false);
 
     ui->cbGLDisplay->setChecked(oldGLDisplay != 0);
 

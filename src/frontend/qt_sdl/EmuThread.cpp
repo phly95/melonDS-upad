@@ -237,12 +237,14 @@ void EmuThread::run()
                 {
                     emuInstance->setVSyncGL(true);
                     videoRenderer = globalCfg.GetInt("3D.Renderer");
+                    if (videoRenderer == renderer3D_Software)
+                        videoRenderer = renderer3D_OpenGL;
                 }
 #ifdef OGLRENDERER_ENABLED
                 else
 #endif
                 {
-                    videoRenderer = 0;
+                    videoRenderer = renderer3D_OpenGL;
                 }
 
                 updateRenderer();

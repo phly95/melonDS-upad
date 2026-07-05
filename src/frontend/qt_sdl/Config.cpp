@@ -53,7 +53,7 @@ DefaultList<int> DefaultInts =
     {"Instance*.Window*.Width", 256},
     {"Instance*.Window*.Height", 384},
     {"Screen.VSyncInterval", 1},
-    {"3D.Renderer", renderer3D_Software},
+    {"3D.Renderer", renderer3D_OpenGL},
     {"3D.GL.ScaleFactor", 1},
 #ifdef JIT_ENABLED
     {"JIT.MaxBlockSize", 32},
