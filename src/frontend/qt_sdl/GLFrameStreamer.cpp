@@ -217,6 +217,27 @@ bool GLFrameStreamer::PushFrame(void* top_buffer, void* bottom_buffer, bool use_
     if (!active || !appsrc || !pipeline || !fbo || !tex)
         return false;
 
+    // Poll bus for async errors
+    GstBus* bus = gst_element_get_bus(pipeline);
+    GstMessage* msg = gst_bus_pop_filtered(bus, GST_MESSAGE_ERROR);
+    if (msg)
+    {
+        GError* err = nullptr;
+        gchar* dbg = nullptr;
+        gst_message_parse_error(msg, &err, &dbg);
+        melonDS::Platform::Log(melonDS::Platform::Error,
+            "GLFrameStreamer: Pipeline error from %s: %s%s%s",
+            GST_OBJECT_NAME(msg->src), err->message,
+            dbg ? "\n" : "", dbg ? dbg : "");
+        g_error_free(err);
+        g_free(dbg);
+        gst_message_unref(msg);
+        gst_object_unref(bus);
+        Stop();
+        return false;
+    }
+    gst_object_unref(bus);
+
     void* src_buffer = use_opengl_renderer ? top_buffer :
                        ((screen == StreamingScreen::Top) ? top_buffer : bottom_buffer);
     if (!src_buffer)
