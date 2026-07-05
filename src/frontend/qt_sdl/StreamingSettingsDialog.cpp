@@ -41,6 +41,7 @@ StreamingSettingsDialog::StreamingSettingsDialog(QWidget* parent)
     ui->streaming_enabled_check->setChecked(cfg.GetBool("Streaming.Enabled"));
     ui->streaming_screen_combo->setCurrentIndex(cfg.GetInt("Streaming.Screen"));
     ui->streaming_encoder_combo->setCurrentIndex(cfg.GetInt("Streaming.Encoder"));
+    ui->streaming_bitrate_spin->setValue(cfg.GetInt("Streaming.Bitrate"));
     ui->streaming_gpu_edit->setText(QString::fromStdString(cfg.GetString("Streaming.GPUDevice")));
     ui->streaming_custom_res_check->setChecked(cfg.GetBool("Streaming.CustomResolution"));
     ui->streaming_width_spin->setValue(cfg.GetInt("Streaming.Width"));
@@ -70,6 +71,7 @@ void StreamingSettingsDialog::on_StreamingSettingsDialog_accepted()
     cfg.SetBool("Streaming.Enabled", ui->streaming_enabled_check->isChecked());
     cfg.SetInt("Streaming.Screen", ui->streaming_screen_combo->currentIndex());
     cfg.SetInt("Streaming.Encoder", ui->streaming_encoder_combo->currentIndex());
+    cfg.SetInt("Streaming.Bitrate", ui->streaming_bitrate_spin->value());
     cfg.SetString("Streaming.GPUDevice", ui->streaming_gpu_edit->text().toStdString());
     cfg.SetBool("Streaming.CustomResolution", ui->streaming_custom_res_check->isChecked());
     cfg.SetInt("Streaming.Width", ui->streaming_width_spin->value());

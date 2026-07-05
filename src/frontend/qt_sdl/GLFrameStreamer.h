@@ -61,7 +61,7 @@ public:
     void Start(const std::string& target_ip, uint16_t target_port,
                StreamingEncoder encoder, const std::string& gpu_device,
                bool custom_resolution, uint32_t width, uint32_t height,
-               StreamingScreen screen);
+               StreamingScreen screen, uint32_t bitrate);
     void Stop();
 
     bool PushFrame(void* top_buffer, void* bottom_buffer, bool use_opengl_renderer);
@@ -71,14 +71,22 @@ public:
 
 private:
     void InitGstPipeline(const std::string& target_ip, uint16_t target_port,
-                         StreamingEncoder encoder, const std::string& gpu_device);
+                         StreamingEncoder encoder, const std::string& gpu_device,
+                         uint32_t bitrate);
     void CleanupGstPipeline();
-    std::string GetEncoderDesc(StreamingEncoder encoder, const std::string& gpu_device);
+    std::string GetEncoderDesc(StreamingEncoder encoder, const std::string& gpu_device,
+                               uint32_t bitrate);
 
     bool active = false;
+    bool customResolution = false;
     uint32_t width = 0;
     uint32_t height = 0;
+    uint32_t bitrate = 4000;
     StreamingScreen screen = StreamingScreen::Top;
+
+    // Track actual allocated sizes for dynamic resize when custom resolution is off
+    uint32_t allocWidth = 0;
+    uint32_t allocHeight = 0;
 
     GLuint fbo = 0;
     GLuint tex = 0;

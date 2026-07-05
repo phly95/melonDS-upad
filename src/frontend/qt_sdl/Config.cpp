@@ -77,6 +77,7 @@ DefaultList<int> DefaultInts =
     {"Streaming.Encoder", 0},
     {"Streaming.Width", 256},
     {"Streaming.Height", 192},
+    {"Streaming.Bitrate", 4000},
     {"Streaming.TargetPort", 5000},
 #endif
 };

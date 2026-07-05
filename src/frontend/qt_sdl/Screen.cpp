@@ -1434,9 +1434,10 @@ void ScreenPanelGL::initStreamer()
     bool customRes = cfg.GetBool("Streaming.CustomResolution");
     uint32_t w = static_cast<uint32_t>(cfg.GetInt("Streaming.Width"));
     uint32_t h = static_cast<uint32_t>(cfg.GetInt("Streaming.Height"));
+    uint32_t br = static_cast<uint32_t>(cfg.GetInt("Streaming.Bitrate"));
     StreamingScreen scr = static_cast<StreamingScreen>(cfg.GetInt("Streaming.Screen"));
 
-    streamer->Start(ip, port, encoder, gpu, customRes, w, h, scr);
+    streamer->Start(ip, port, encoder, gpu, customRes, w, h, scr, br);
     streamingEnabled = streamer->IsActive();
 }
 

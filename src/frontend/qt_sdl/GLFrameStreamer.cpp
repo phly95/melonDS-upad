@@ -47,7 +47,8 @@ bool GLFrameStreamer::IsSupported()
     return true;
 }
 
-std::string GLFrameStreamer::GetEncoderDesc(StreamingEncoder encoder, const std::string& gpu_device)
+std::string GLFrameStreamer::GetEncoderDesc(StreamingEncoder encoder, const std::string& gpu_device,
+                                           uint32_t bitrate)
 {
     switch (encoder)
     {
@@ -56,9 +57,9 @@ std::string GLFrameStreamer::GetEncoderDesc(StreamingEncoder encoder, const std:
     case StreamingEncoder::VAAPI_LowPower:
         return "vah264lpenc rate-control=cqp init-qp=22 qp-ip=1";
     case StreamingEncoder::x264:
-        return "x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 bitrate=400";
+        return "x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 bitrate=" + std::to_string(bitrate);
     case StreamingEncoder::OpenH264:
-        return "openh264enc complexity=low bitrate=2000";
+        return "openh264enc complexity=low bitrate=" + std::to_string(bitrate);
     case StreamingEncoder::Auto:
     default:
     {
@@ -68,13 +69,14 @@ std::string GLFrameStreamer::GetEncoderDesc(StreamingEncoder encoder, const std:
             gst_object_unref(test);
             return "vaapih264enc rate-control=cqp init-qp=22 qp-ip=1";
         }
-        return "x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 bitrate=400";
+        return "x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 bitrate=" + std::to_string(bitrate);
     }
     }
 }
 
 void GLFrameStreamer::InitGstPipeline(const std::string& target_ip, uint16_t target_port,
-                                       StreamingEncoder encoder, const std::string& gpu_device)
+                                       StreamingEncoder encoder, const std::string& gpu_device,
+                                       uint32_t bitrate)
 {
     if (!gst_is_initialized())
     {
@@ -83,7 +85,7 @@ void GLFrameStreamer::InitGstPipeline(const std::string& target_ip, uint16_t tar
         gst_init(nullptr, nullptr);
     }
 
-    std::string enc_desc = GetEncoderDesc(encoder, gpu_device);
+    std::string enc_desc = GetEncoderDesc(encoder, gpu_device, bitrate);
 
     std::string pipeline_desc = "appsrc name=src is-live=true format=3 "
                                 "! videoconvert ! " + enc_desc +
@@ -145,13 +147,25 @@ void GLFrameStreamer::CleanupGstPipeline()
 void GLFrameStreamer::Start(const std::string& target_ip, uint16_t target_port,
                             StreamingEncoder encoder, const std::string& gpu_device,
                             bool custom_resolution, uint32_t stream_width, uint32_t stream_height,
-                            StreamingScreen stream_screen)
+                            StreamingScreen stream_screen, uint32_t stream_bitrate)
 {
     if (active) Stop();
 
     screen = stream_screen;
-    width = custom_resolution ? stream_width : 256;
-    height = custom_resolution ? stream_height : 192;
+    customResolution = custom_resolution;
+    bitrate = stream_bitrate;
+
+    if (custom_resolution)
+    {
+        width = stream_width;
+        height = stream_height;
+    }
+    else
+    {
+        // Will be determined dynamically from source texture in PushFrame
+        width = 256;
+        height = 192;
+    }
 
     glGenFramebuffers(1, &fbo);
 
@@ -161,6 +175,9 @@ void GLFrameStreamer::Start(const std::string& target_ip, uint16_t target_port,
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
+
+    allocWidth = width;
+    allocHeight = height;
 
     glGenBuffers(NUM_PBO_BUFFERS, pbo);
     for (int i = 0; i < NUM_PBO_BUFFERS; i++)
@@ -172,7 +189,7 @@ void GLFrameStreamer::Start(const std::string& target_ip, uint16_t target_port,
     pboPrimed = false;
     currentPBO = 0;
 
-    InitGstPipeline(target_ip, target_port, encoder, gpu_device);
+    InitGstPipeline(target_ip, target_port, encoder, gpu_device, bitrate);
     active = (pipeline != nullptr);
 
     if (active)
@@ -196,16 +213,79 @@ bool GLFrameStreamer::PushFrame(void* top_buffer, void* bottom_buffer, bool use_
     if (!active || !appsrc || !pipeline || !fbo || !tex)
         return false;
 
-    // In OpenGL mode, both screens are layers in a single GL_TEXTURE_2D_ARRAY
-    // pointed to by top_buffer. bottom_buffer is always nullptr.
     void* src_buffer = use_opengl_renderer ? top_buffer :
                        ((screen == StreamingScreen::Top) ? top_buffer : bottom_buffer);
     if (!src_buffer)
         return false;
 
-    if (!use_opengl_renderer)
+    if (use_opengl_renderer)
+    {
+        // OpenGL renderer: src_buffer is a pointer to a GLuint texture ID
+        // for a GL_TEXTURE_2D_ARRAY: top=layer0, bottom=layer1.
+        GLuint srcTexId = *(GLuint*)src_buffer;
+        GLint layer = (screen == StreamingScreen::Top) ? 0 : 1;
+
+        if (!glIsTexture(srcTexId))
+        {
+            melonDS::Platform::Log(melonDS::Platform::Error,
+                "GLFrameStreamer: srcTexId %u is not a valid texture", srcTexId);
+            return false;
+        }
+
+        GLint srcWidth = 256, srcHeight = 192;
+        glBindTexture(GL_TEXTURE_2D_ARRAY, srcTexId);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_WIDTH, &srcWidth);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_HEIGHT, &srcHeight);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+        // When custom resolution is off, resize stream to match renderer output
+        if (!customResolution && (static_cast<uint32_t>(srcWidth) != width || static_cast<uint32_t>(srcHeight) != height))
+        {
+            width = srcWidth;
+            height = srcHeight;
+
+            glBindTexture(GL_TEXTURE_2D, tex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            for (int i = 0; i < NUM_PBO_BUFFERS; i++)
+            {
+                glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo[i]);
+                glBufferData(GL_PIXEL_PACK_BUFFER, width * height * 4, nullptr, GL_STREAM_READ);
+            }
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+            pboPrimed = false;
+
+            allocWidth = width;
+            allocHeight = height;
+
+            // Update appsrc caps to match new resolution
+            GstVideoInfo vinfo;
+            gst_video_info_set_format(&vinfo, GST_VIDEO_FORMAT_RGBA, width, height);
+            GstCaps* caps = gst_video_info_to_caps(&vinfo);
+            g_object_set(appsrc, "caps", caps, NULL);
+            gst_caps_unref(caps);
+
+            melonDS::Platform::Log(melonDS::Platform::Info, "GLFrameStreamer: Resized to %ux%u", width, height);
+        }
+
+        // Read directly from source texture layer into PBO (no intermediate blit)
+        GLuint srcFbo;
+        glGenFramebuffers(1, &srcFbo);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, srcFbo);
+        glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, srcTexId, 0, layer);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo[currentPBO]);
+        glReadPixels(0, 0, srcWidth, srcHeight, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+        glDeleteFramebuffers(1, &srcFbo);
+    }
+    else
     {
         // Software renderer: src_buffer is CPU-side BGRA 256x192 data.
+        // Upload to temp texture, blit to target texture at stream resolution.
         GLuint srcTex;
         glGenTextures(1, &srcTex);
         glBindTexture(GL_TEXTURE_2D, srcTex);
@@ -228,51 +308,15 @@ bool GLFrameStreamer::PushFrame(void* top_buffer, void* bottom_buffer, bool use_
 
         glDeleteFramebuffers(1, &srcFbo);
         glDeleteTextures(1, &srcTex);
-    }
-    else
-    {
-        // OpenGL renderer: src_buffer is a pointer to a GLuint texture ID
-        // for a GL_TEXTURE_2D_ARRAY: top=layer0, bottom=layer1.
-        GLuint srcTexId = *(GLuint*)src_buffer;
-        GLint layer = (screen == StreamingScreen::Top) ? 0 : 1;
 
-        if (!glIsTexture(srcTexId))
-        {
-            melonDS::Platform::Log(melonDS::Platform::Error,
-                "GLFrameStreamer: srcTexId %u is not a valid texture", srcTexId);
-            return false;
-        }
-
-        // Query actual source texture dimensions (supports upscaled renderers)
-        GLint srcWidth = 256, srcHeight = 192;
-        glBindTexture(GL_TEXTURE_2D_ARRAY, srcTexId);
-        glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_WIDTH, &srcWidth);
-        glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_HEIGHT, &srcHeight);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
-        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
-        glDrawBuffer(GL_COLOR_ATTACHMENT0);
-
-        GLuint srcFbo;
-        glGenFramebuffers(1, &srcFbo);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, srcFbo);
-        glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, srcTexId, 0, layer);
+        // Read from target texture into PBO
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
         glReadBuffer(GL_COLOR_ATTACHMENT0);
 
-        glBlitFramebuffer(0, 0, srcWidth, srcHeight, 0, 0, width, height,
-                          GL_COLOR_BUFFER_BIT, GL_LINEAR);
-
-        glDeleteFramebuffers(1, &srcFbo);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo[currentPBO]);
+        glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
     }
-
-    // Read from target texture into PBO
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
-    glReadBuffer(GL_COLOR_ATTACHMENT0);
-
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo[currentPBO]);
-    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, 0);
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
     // Map previous frame's PBO and push to GStreamer
     if (pboPrimed)
